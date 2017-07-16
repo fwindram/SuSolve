@@ -16,6 +16,7 @@ class Container:
         self.containertype = containertype
         self.containernumber = containernumber
         self.mapping = []
+        self.referredids = []    # Make it easier to reconstruct a container by addressing directly
         self.assigned = set()
         self.unassigned = set()
         self.solved = False     # Is the container solved?
@@ -42,9 +43,14 @@ class Container:
         if len(self.unassigned) < 1:
             self.solved = True
 
+    def fill_referredids(self, referred):
+        """Pull provided referred ids into class"""
+        self.referredids = referred
+
     # Pure container solution methods - need no other info.
     def lastone(self):
         """Find whether only one value is left unassigned"""
+        # DEPRECATED BY .last_possible() CELL METHOD
         if len(self.unassigned) == 1:
             final = self.unassigned.pop()   # Pop off final value in set
             self.mapping = [final if x == "x" else x for x in self.mapping]     # Insert into mapping
@@ -60,7 +66,7 @@ class SudokuMatrix:
         self.rowcontainers = []
         self.boxcontainers = []
         self.fullinput(matrixlist)
-        self.refresh_containers_full()
+        self.create_containers()
 
     def fullinput(self, inputlist):
         """Convert a list of cell values to SudokuCell instances"""
@@ -70,51 +76,123 @@ class SudokuMatrix:
             self.values.append(SudokuCell(counter, x))      # Put in cell id and value to a SudokuCell
             counter += 1
 
-    def refresh_containers_full(self):
-        """Creates and fills the 27 containers, split into 3 9s"""
-        # This could (and should) be collapsed down to only parse self.values once.
-        # Create column containers
-        containermapping_meta = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
+    def create_containers(self):
+        """Creates and fills the 27 containers, split into 3 9s for column, row & box"""
+        containermapping_meta_columns = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
+        containermapping_meta_rows = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
+        containermapping_meta_boxes = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
         for x in self.values:
-            containermapping_meta[x.column].append(x.value)     #
+            containermapping_meta_columns[x.column].append(x.value)
+            containermapping_meta_rows[x.row].append(x.value)
+            containermapping_meta_boxes[x.box].append(x.value)
         counter = 0
-        for mapping in containermapping_meta:
+        for mapping in containermapping_meta_columns:
             self.columncontainers.append(Container("column", counter, mapping))
             counter += 1
-
-        # Create row containers
-        containermapping_meta = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
-        for x in self.values:
-            containermapping_meta[x.row].append(x.value)
         counter = 0
-        for mapping in containermapping_meta:
+        for mapping in containermapping_meta_rows:
             self.rowcontainers.append(Container("row", counter, mapping))
             counter += 1
-
-        # Create box containers
-        containermapping_meta = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
-        for x in self.values:
-            containermapping_meta[x.box].append(x.value)
         counter = 0
-        for mapping in containermapping_meta:
+        for mapping in containermapping_meta_boxes:
             self.boxcontainers.append(Container("box", counter, mapping))
             counter += 1
+        self.trace_referring_cells()
+
+    def trace_referring_cells(self):
+        """Fill in containers with the cells that refer to them."""
+        # Create map structure
+        referrals_map = []
+        for i in range(0, 3):
+            referrals_map.append([])
+            for j in range(0, 9):
+                referrals_map[len(referrals_map) - 1].append([])
+        # Fill map structure
+        for cell in self.values:
+            referrals_map[0][cell.column].append(cell.cellid)
+            referrals_map[1][cell.row].append(cell.cellid)
+            referrals_map[2][cell.box].append(cell.cellid)
+        # Fill container referrals from mappings
+        for container in self.columncontainers:
+            container.fill_referredids(referrals_map[0][container.containernumber])
+        for container in self.rowcontainers:
+            container.fill_referredids(referrals_map[1][container.containernumber])
+        for container in self.boxcontainers:
+            container.fill_referredids(referrals_map[2][container.containernumber])
+
+    def regen_containers(self, containerlist):
+        """Regenerate specified containers.
+        :param containerlist: List of 3 lists, corresponding to columns, rows & boxes
+        :type containerlist: list"""
+        for column in containerlist[0]:
+            referred = self.columncontainers[column].referredids
+            mapping = []
+            for cellid in referred:
+                mapping.append(self.values[cellid].value)
+            self.columncontainers[column].update(mapping)
+        for row in containerlist[1]:
+            referred = self.rowcontainers[row].referredids
+            mapping = []
+            for cellid in referred:
+                mapping.append(self.values[cellid].value)
+            self.rowcontainers[row].update(mapping)
+        for box in containerlist[2]:
+            referred = self.boxcontainers[box].referredids
+            mapping = []
+            for cellid in referred:
+                mapping.append(self.values[cellid].value)
+            self.boxcontainers[box].update(mapping)
 
     def cellinput(self, updater):
         # Takes a list of updater namedtuples and updates the noted cells with the values provided.
         #
         pass
 
+    # Full & partial matrix updates
+    def find_possible_full(self):
+        """Update -all- cells with their possible values, only considering self and all containers."""
+        container_updates = [set(), set(), set()]
+        for x in self.values:
+            possible = {1, 2, 3, 4, 5, 6, 7, 8, 9}  # Create set literal containing all numbers 1 - 9 inclusive
+            impossible = set()  # Create base set for used numbers in all containers.
+            impossible.update(self.columncontainers[x.column].assigned)  # Add used numbers from column
+            impossible.update(self.rowcontainers[x.row].assigned)       # Add used numbers from row
+            impossible.update(self.boxcontainers[x.box].assigned)       # Add used numbers from box
+            possible.difference_update(impossible)  # Find possible (diff original possible with impossible).
+            if x.update_possible(possible):  # Update cell possible set with calculate possibles.
+                container_updates[0].add(x.column)  # If cell VALUE was updated, mark containers for regen
+                container_updates[1].add(x.row)
+                container_updates[2].add(x.box)
+        self.regen_containers(container_updates)  # Regenerate containers.
+
+    def find_possible(self):
+        """Update -unsolved- cells with their possible values, only considering self and all containers."""
+        container_updates = [set(), set(), set()]
+        for x in self.values:
+            possible = {1, 2, 3, 4, 5, 6, 7, 8, 9}  # Create set literal containing all numbers 1 - 9 inclusive
+            if x.value not in possible:  # Run if value is "x"
+                impossible = set()      # Create base set for used numbers in all containers.
+                impossible.update(self.columncontainers[x.column])  # Add used numbers from column
+                impossible.update(self.rowcontainers[x.row])        # Add used numbers from row
+                impossible.update(self.boxcontainers[x.box])        # Add used numbers from box
+                possible.difference_update(impossible)      # Find possible (diff original possible with impossible).
+                if x.update_possible(possible):     # Update cell possible set with calculate possibles.
+                    container_updates[0].add(x.column)   # If cell VALUE was updated, mark containers for regen
+                    container_updates[1].add(x.row)
+                    container_updates[2].add(x.box)
+        self.regen_containers(container_updates)    # Regenerate containers.
+
 
 class SudokuCell:
     """Class to hold a single Sudoku cell"""
-    def __init__(self, cellid, value="x"):
+    def __init__(self, cellid, value):
         self.cellid = cellid    # Cells are numbered from 0 to 80
         self.column = cellid % 9
         self.row = cellid // 9
         self.box = 0
         self.find_box()
         self.value = value
+        self.possible = set()
 
     def find_box(self):
         """Find box id number"""
@@ -123,16 +201,36 @@ class SudokuCell:
         boxcolumn = basecolumn // 3
         self.box = boxcolumn + baserow
 
+    def update_possible(self, possible):
+        """Update possible numbers"""
+        self.possible = possible
+        if self.last_possible():
+            return True
+        # else return None (implicit)
+
+    def last_possible(self):
+        """Set to remaining number if possible set is len 1"""
+        if len(self.possible) == 1:
+            self.value = self.possible.pop()
+            return True     # Tell outside world that we have put a value in!
+            # NOW REGEN LINKED CONTAINERS
+
 
 def sudostring_parse(sudostr):
     """Take Sudoku in string format and output in list format"""
     numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9}    # Create set literal containing all numbers 1 - 9 inclusive
     outlist = []
+    xcount = 0
     for i in range(0, len(sudostr)):
-        if sudostr[i] in numbers:
-            outlist.append(int(sudostr[i]))     # Output only numbers 1 - 9 inclusive
-        else:
-            outlist.append(str(sudostr[i]))
+        try:
+            test = int(sudostr[i]) + 0
+            if not test:    # Account for if a 0 in inserted by accident.
+                raise ValueError
+            outlist.append(int(sudostr[i]))
+        except ValueError:
+            outlist.append("x")     # Replace unknown characters with x
+            xcount += 1
+    print("Left to find: {}".format(xcount))
     return outlist
 
 
@@ -143,9 +241,13 @@ def main():
     testsudo = "xxxxxxx4554x3x27xx8x694xx32x21xxx5x776x52x4xxxx5x64x1xx3217xxx49xxxx8x7xx8x4xx3x9"
     if len(testsudo) == 81:     # Check input string length
         matrixlist = sudostring_parse(testsudo)
-    # matrixlist = [SudokuCell(x) for x in range(0, 81)]
         sudoku = SudokuMatrix(matrixlist)
+        sudoku.find_possible_full()
+        xcount = 0
         for x in sudoku.values:
             print("{}:{}".format(x.cellid, x.value))
+            if x.value == "x":
+                xcount += 1
+        print("Left to find: {}".format(xcount))
 
 main()
