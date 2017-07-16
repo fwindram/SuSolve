@@ -56,14 +56,48 @@ class SudokuMatrix:
     """Class to hold the main Sudoku matrix and associated methods."""
     def __init__(self, matrixlist):
         self.values = []
+        self.columncontainers = []
+        self.rowcontainers = []
+        self.boxcontainers = []
         self.fullinput(matrixlist)
+        self.refresh_containers_full()
 
     def fullinput(self, inputlist):
-        """Construct a """
+        """Convert a list of cell values to SudokuCell instances"""
         self.values = []
         counter = 0
         for x in inputlist:
-            self.values.append(SudokuCell(counter, x))
+            self.values.append(SudokuCell(counter, x))      # Put in cell id and value to a SudokuCell
+            counter += 1
+
+    def refresh_containers_full(self):
+        """Creates and fills the 27 containers, split into 3 9s"""
+        # This could (and should) be collapsed down to only parse self.values once.
+        # Create column containers
+        containermapping_meta = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
+        for x in self.values:
+            containermapping_meta[x.column].append(x.value)     #
+        counter = 0
+        for mapping in containermapping_meta:
+            self.columncontainers.append(Container("column", counter, mapping))
+            counter += 1
+
+        # Create row containers
+        containermapping_meta = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
+        for x in self.values:
+            containermapping_meta[x.row].append(x.value)
+        counter = 0
+        for mapping in containermapping_meta:
+            self.rowcontainers.append(Container("row", counter, mapping))
+            counter += 1
+
+        # Create box containers
+        containermapping_meta = [[], [], [], [], [], [], [], [], []]  # List of 9 lists, 1 for each row
+        for x in self.values:
+            containermapping_meta[x.box].append(x.value)
+        counter = 0
+        for mapping in containermapping_meta:
+            self.boxcontainers.append(Container("box", counter, mapping))
             counter += 1
 
     def cellinput(self, updater):
@@ -79,10 +113,10 @@ class SudokuCell:
         self.column = cellid % 9
         self.row = cellid // 9
         self.box = 0
-        self.findbox()
+        self.find_box()
         self.value = value
 
-    def findbox(self):
+    def find_box(self):
         """Find box id number"""
         baserow = self.row - self.row % 3
         basecolumn = self.column - self.column % 3
@@ -90,14 +124,13 @@ class SudokuCell:
         self.box = boxcolumn + baserow
 
 
-
 def sudostring_parse(sudostr):
     """Take Sudoku in string format and output in list format"""
-    numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9}    # Create set literal containing all numbers 1 - 10
+    numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9}    # Create set literal containing all numbers 1 - 9 inclusive
     outlist = []
     for i in range(0, len(sudostr)):
         if sudostr[i] in numbers:
-            outlist.append(int(sudostr[i]))
+            outlist.append(int(sudostr[i]))     # Output only numbers 1 - 9 inclusive
         else:
             outlist.append(str(sudostr[i]))
     return outlist
