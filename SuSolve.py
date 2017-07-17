@@ -5,9 +5,7 @@
 #
 # Python 3.6
 
-import numpy as np
 from collections import namedtuple
-from pprint import pprint
 
 
 class Container:
@@ -67,6 +65,14 @@ class SudokuMatrix:
         self.boxcontainers = []
         self.fullinput(matrixlist)
         self.create_containers()
+
+    def completion(self):
+        """Count the number of unknown values left in a Sudoku matrix."""
+        comp_counter = 0       # Number of unknowns
+        for cell in self.values:
+            if cell.value == "x":
+                comp_counter += 1
+        return comp_counter
 
     def fullinput(self, inputlist):
         """Convert a list of cell values to SudokuCell instances"""
@@ -230,7 +236,8 @@ def sudostring_parse(sudostr):
         except ValueError:
             outlist.append("x")     # Replace unknown characters with x
             xcount += 1
-    print("Left to find: {}".format(xcount))
+    print("Sudoku string:\n{}".format(sudostr))
+    print("Initial values left to find: {}".format(xcount))
     return outlist
 
 
@@ -242,12 +249,20 @@ def main():
     if len(testsudo) == 81:     # Check input string length
         matrixlist = sudostring_parse(testsudo)
         sudoku = SudokuMatrix(matrixlist)
-        sudoku.find_possible_full()
-        xcount = 0
-        for x in sudoku.values:
-            print("{}:{}".format(x.cellid, x.value))
-            if x.value == "x":
-                xcount += 1
-        print("Left to find: {}".format(xcount))
+        previous_count = 0
+        current_count = 0
+        while True:
+            # print("Run {}".format())
+            sudoku.find_possible_full()
+            current_count = sudoku.completion()
+            if current_count == previous_count:
+                if not current_count:
+                    print("Success!")
+                else:
+                    print("No more resolutions possible.")
+                break
+            previous_count = int(current_count)
+            # print("Left to find: {}/81".format(current_count))
+            print("{}% solved ({}/81)".format(int((81 - current_count) / 81 * 100), current_count))
 
 main()
