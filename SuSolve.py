@@ -6,6 +6,7 @@
 # Python 3.6
 
 from collections import namedtuple
+from testpuzzles import *
 
 
 class Container:
@@ -73,6 +74,25 @@ class SudokuMatrix:
             if cell.value == "x":
                 comp_counter += 1
         return comp_counter
+
+    def print_grid(self):
+        gridstring = ""
+        griddivider_vert = " "
+        sudoindex = 0
+        for i in range(0, 11):      # Row Iteration
+            grid_line = []
+            if i in [3, 7]:     # Insert dividers
+                gridstring += "- - - + - - - + - - -\n"
+            else:
+                for j in range(0, 9):   # Column Iteration
+                    if j in [2, 5]:
+                        grid_line.append(str(self.values[sudoindex].value) + " |")      # Insert dividers
+                    else:
+                        grid_line.append(str(self.values[sudoindex].value))
+                    sudoindex += 1
+                gridstring += "{}\n".format(griddivider_vert.join(grid_line))
+
+        return gridstring
 
     def fullinput(self, inputlist):
         """Convert a list of cell values to SudokuCell instances"""
@@ -157,7 +177,6 @@ class SudokuMatrix:
     # Full & partial matrix updates
     def find_possible_full(self):
         """Update -all- cells with their possible values, only considering self and all containers."""
-        container_updates = [set(), set(), set()]
         for x in self.values:
             possible = {1, 2, 3, 4, 5, 6, 7, 8, 9}  # Create set literal containing all numbers 1 - 9 inclusive
             impossible = set()  # Create base set for used numbers in all containers.
@@ -165,11 +184,7 @@ class SudokuMatrix:
             impossible.update(self.rowcontainers[x.row].assigned)       # Add used numbers from row
             impossible.update(self.boxcontainers[x.box].assigned)       # Add used numbers from box
             possible.difference_update(impossible)  # Find possible (diff original possible with impossible).
-            if x.update_possible(possible):  # Update cell possible set with calculate possibles.
-                container_updates[0].add(x.column)  # If cell VALUE was updated, mark containers for regen
-                container_updates[1].add(x.row)
-                container_updates[2].add(x.box)
-        self.regen_containers(container_updates)  # Regenerate containers.
+            x.update_possible(possible, True)   # Update cell possible set with calculate possibles.
 
     def find_possible(self):
         """Update -unsolved- cells with their possible values, only considering self and all containers."""
@@ -178,9 +193,9 @@ class SudokuMatrix:
             possible = {1, 2, 3, 4, 5, 6, 7, 8, 9}  # Create set literal containing all numbers 1 - 9 inclusive
             if x.value not in possible:  # Run if value is "x"
                 impossible = set()      # Create base set for used numbers in all containers.
-                impossible.update(self.columncontainers[x.column])  # Add used numbers from column
-                impossible.update(self.rowcontainers[x.row])        # Add used numbers from row
-                impossible.update(self.boxcontainers[x.box])        # Add used numbers from box
+                impossible.update(self.columncontainers[x.column].assigned)  # Add used numbers from column
+                impossible.update(self.rowcontainers[x.row].assigned)        # Add used numbers from row
+                impossible.update(self.boxcontainers[x.box].assigned)        # Add used numbers from box
                 possible.difference_update(impossible)      # Find possible (diff original possible with impossible).
                 if x.update_possible(possible):     # Update cell possible set with calculate possibles.
                     container_updates[0].add(x.column)   # If cell VALUE was updated, mark containers for regen
@@ -207,12 +222,13 @@ class SudokuCell:
         boxcolumn = basecolumn // 3
         self.box = boxcolumn + baserow
 
-    def update_possible(self, possible):
+    def update_possible(self, possible, fullrun=False):
         """Update possible numbers"""
         self.possible = possible
-        if self.last_possible():
-            return True
-        # else return None (implicit)
+        if not fullrun:     # Only run if this is not the initial possibility update.
+            if self.last_possible():
+                return True
+            # else return None (implicit)
 
     def last_possible(self):
         """Set to remaining number if possible set is len 1"""
@@ -236,33 +252,48 @@ def sudostring_parse(sudostr):
         except ValueError:
             outlist.append("x")     # Replace unknown characters with x
             xcount += 1
-    print("Sudoku string:\n{}".format(sudostr))
-    print("Initial values left to find: {}".format(xcount))
+    print("\nSudoku string:\n{}".format(sudostr))
+    print("Initial values left to find: {}\n".format(xcount))
     return outlist
 
 
 def main():
     """Main loop"""
     updater = namedtuple("Updater", "x, y, value")  # Named tuple for holding update transactions.
-    # Test data
-    testsudo = "xxxxxxx4554x3x27xx8x694xx32x21xxx5x776x52x4xxxx5x64x1xx3217xxx49xxxx8x7xx8x4xx3x9"
-    if len(testsudo) == 81:     # Check input string length
-        matrixlist = sudostring_parse(testsudo)
-        sudoku = SudokuMatrix(matrixlist)
-        previous_count = 0
-        current_count = 0
-        while True:
-            # print("Run {}".format())
-            sudoku.find_possible_full()
-            current_count = sudoku.completion()
-            if current_count == previous_count:
-                if not current_count:
-                    print("Success!")
-                else:
-                    print("No more resolutions possible.")
-                break
-            previous_count = int(current_count)
-            # print("Left to find: {}/81".format(current_count))
-            print("{}% solved ({}/81)".format(int((81 - current_count) / 81 * 100), current_count))
+
+    completed_sudokus = 0
+    for testsudo in sudotest_easy:
+        if len(testsudo) == 81:     # Check input string length
+            matrixlist = sudostring_parse(testsudo)
+            sudoku = SudokuMatrix(matrixlist)
+            match_count = 0
+            previous_count = 0
+            current_count = 0
+            print("{}".format(sudoku.print_grid()))
+            sudoku.find_possible_full()     # Initially generate possibility sets
+            while True:
+                # print("Run {}".format())
+                sudoku.find_possible()      # Find new possibility sets & update values
+                current_count = sudoku.completion()
+                if current_count == previous_count:
+                    match_count += 1
+                if not current_count:   # Break if 0 remaining to solve
+                    print("{}% solved ({}/81)".format(int((81 - current_count) / 81 * 100), current_count))
+                    print("Success!\n")
+                    completed_sudokus += 1
+                    break
+                elif match_count >= 3:     # Mark as incomplete after 3 runs with no change
+                    print("Incomplete.\nPuzzle was solved {}% of the way."
+                          .format(int((81 - current_count) / 81 * 100)))
+                    failstr = ""
+                    for cell in sudoku.values:
+                        failstr += str(cell.value)
+                    print("Final state:\n{}".format(failstr))
+                    break
+                previous_count = int(current_count)
+                # print("Left to find: {}/81".format(current_count))
+                print("{}% solved ({}/81)".format(int((81 - current_count) / 81 * 100), current_count))
+            print("{}".format(sudoku.print_grid()))
+    print("Successfully completed {}/{}".format(completed_sudokus, len(sudotest_easy)))
 
 main()
