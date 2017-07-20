@@ -232,7 +232,7 @@ class SudokuCell:
 
     def last_possible(self):
         """Set to remaining number if possible set is len 1"""
-        if len(self.possible) == 1:
+        if len(self.possible) == 1 and self.value == "x":
             self.value = self.possible.pop()
             return True     # Tell outside world that we have put a value in!
             # NOW REGEN LINKED CONTAINERS
